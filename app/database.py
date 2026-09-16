@@ -6,7 +6,7 @@ Acesso à base de dados. SQLite chega perfeitamente para este volume de dados
 import json
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.config import DB_PATH
 
@@ -41,6 +41,16 @@ def init_db() -> None:
                 receitas TEXT NOT NULL,
                 justificacao TEXT,
                 criado_em TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS compras (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item TEXT NOT NULL,
+                quantidade TEXT,
+                data TEXT NOT NULL
             )
             """
         )
@@ -112,3 +122,22 @@ def ultimo_cardapio_semanal() -> list[str]:
             "SELECT receitas FROM cardapio_semanal ORDER BY criado_em DESC LIMIT 1"
         ).fetchone()
     return json.loads(linha["receitas"]) if linha else []
+
+
+def marcar_compra(item: str, quantidade: str | None = None) -> int:
+    with get_connection() as conn:
+        cur = conn.execute(
+            "INSERT INTO compras (item, quantidade, data) VALUES (?, ?, ?)",
+            (item, quantidade, datetime.now().isoformat()),
+        )
+        conn.commit()
+        return cur.lastrowid
+
+
+def listar_compras_historico(dias: int) -> list[sqlite3.Row]:
+    desde = (datetime.now() - timedelta(days=dias)).isoformat()
+    with get_connection() as conn:
+        return conn.execute(
+            "SELECT * FROM compras WHERE data >= ? ORDER BY data DESC",
+            (desde,),
+        ).fetchall()

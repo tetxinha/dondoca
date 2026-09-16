@@ -19,8 +19,10 @@ from app.database import (
     adicionar_tarefa,
     guardar_cardapio_semanal,
     init_db,
+    listar_compras_historico,
     listar_faltas,
     listar_tarefas,
+    marcar_compra,
     ultimo_cardapio_semanal,
 )
 from app.receitas import receitas_como_lista
@@ -43,6 +45,15 @@ class VozPayload(BaseModel):
     """
 
     texto: str
+
+
+class ItemComprado(BaseModel):
+    item: str
+    quantidade: str | None = None
+
+
+class ComprasPayload(BaseModel):
+    itens: list[ItemComprado]
 
 
 def _verificar_secret(secret: str | None) -> None:
@@ -135,6 +146,21 @@ def job_cardapio_semanal(force: bool = False, x_dondoca_secret: str | None = Hea
 def get_cardapio_semanal():
     """Só para testares o que foi escolhido na última vez que o job correu."""
     return {"escolhidas": ultimo_cardapio_semanal()}
+
+
+@app.post("/compras/marcar")
+def marcar_compras(payload: ComprasPayload, x_dondoca_secret: str | None = Header(default=None)):
+    """Regista uma lista de itens como comprados."""
+    _verificar_secret(x_dondoca_secret)
+
+    ids = [marcar_compra(item.item, item.quantidade) for item in payload.itens]
+    return {"ok": True, "registadas": len(ids), "ids": ids}
+
+
+@app.get("/compras/historico")
+def get_compras_historico(dias: int = 7):
+    """Compras registadas nos últimos `dias` dias (por omissão, 7)."""
+    return [dict(row) for row in listar_compras_historico(dias)]
 
 
 @app.get("/faltas")

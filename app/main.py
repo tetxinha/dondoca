@@ -117,14 +117,15 @@ def job_cardapio_semanal(force: bool = False, x_dondoca_secret: str | None = Hea
     Job semanal que escolhe 5 receitas, equilibrando proteína/hidratos/
     leguminosas e evitando repetir as da semana passada. Pensado para ser
     chamado por um cron externo (Render Cron Job, IFTTT Date & Time, etc.)
-    aos domingos — usa `?force=true` para testar manualmente noutro dia.
+    às sextas-feiras às 20h — dá tempo de preparar a lista antes de ir ao
+    mercado no sábado. Usa `?force=true` para testar manualmente noutro dia.
     """
     _verificar_secret(x_dondoca_secret)
 
-    if not force and datetime.now().weekday() != 6:
+    if not force and datetime.now().weekday() != 4:
         raise HTTPException(
             status_code=409,
-            detail="Hoje não é domingo. Usa ?force=true para testar mesmo assim.",
+            detail="Hoje não é sexta-feira. Usa ?force=true para testar mesmo assim.",
         )
 
     receitas = receitas_como_lista()

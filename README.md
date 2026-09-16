@@ -63,13 +63,15 @@ Igual ao Applet 1, mas:
 > Nest Mini antes de fazeres deploy definitivo, podes usar o `ngrok`
 > (`ngrok http 8000`) que te dá um URL público temporário.
 
-## Cardápio semanal (job de domingo)
+## Cardápio semanal (job de sexta-feira às 20h)
 
-O ficheiro `data/receitas.csv` é o livro de receitas da casa. Todos os
-domingos, o endpoint `POST /job/cardapio-semanal` pede ao Claude para
-escolher 5 receitas para a semana, equilibrando proteína (peixe/carne/
-vegetariano), hidratos e leguminosas, evitando repetir as da semana passada
-e olhando ao histórico da lista de faltas para variar.
+O ficheiro `data/receitas.csv` é o livro de receitas da casa. Todas as
+sextas-feiras às 20h, o endpoint `POST /job/cardapio-semanal` pede ao
+Claude para escolher 5 receitas para a semana, equilibrando proteína
+(peixe/carne/vegetariano), hidratos e leguminosas, evitando repetir as da
+semana passada e olhando ao histórico da lista de faltas para variar. Este
+horário dá tempo de preparar a lista do mercado antes de lá ires no sábado
+de manhã.
 
 Como a app não tem nenhum agendador interno, este job precisa de ser
 "acionado" de fora, à semelhança dos webhooks de voz. Duas formas simples:
@@ -81,18 +83,18 @@ Como a app não tem nenhum agendador interno, este job precisa de ser
    curl -X POST "https://<o-teu-dominio>/job/cardapio-semanal" \
      -H "x-dondoca-secret: <o-mesmo-valor-do-teu-.env>"
    ```
-3. Agendamento: `0 8 * * 0` (todos os domingos às 8h, ajusta ao fuso horário do Render).
+3. Agendamento: `0 20 * * 5` (todas as sextas-feiras às 20h, ajusta ao fuso horário do Render).
 
 ### Opção B — Applet de "Date & Time" no IFTTT
-1. **If This**: serviço *Date & Time* → trigger **"Every day of the week at"**, escolhe Domingo.
+1. **If This**: serviço *Date & Time* → trigger **"Every day of the week at"**, escolhe Sexta-feira às 20:00.
 2. **Then That**: serviço *Webhooks* → **Make a web request**, igual aos applets de voz:
    - URL: `.../job/cardapio-semanal`
    - Method: `POST`
    - Header: `x-dondoca-secret: <o-mesmo-valor-do-teu-.env>`
 
 ### Testar manualmente
-O endpoint só corre normalmente ao domingo (para não disparares por engano
-noutro dia). Para testares agora mesmo, usa `?force=true`:
+O endpoint só corre normalmente à sexta-feira (para não disparares por
+engano noutro dia). Para testares agora mesmo, usa `?force=true`:
 
 ```bash
 curl -X POST "http://localhost:8000/job/cardapio-semanal?force=true" \
@@ -103,7 +105,7 @@ curl http://localhost:8000/cardapio-semanal
 
 ## Próximos passos (fases seguintes)
 
-- Fase 2: já tens o job de domingo que escolhe as 5 receitas — falta ligar
+- Fase 2: já tens o job de sexta-feira que escolhe as 5 receitas — falta ligar
   isto a uma fonte de receitas mais viva que o CSV (ex: Google Sheet), se
   fizer sentido no futuro.
 - Fase 3: juntar receitas + faltas e enviar a lista consolidada por WhatsApp

@@ -28,6 +28,9 @@ EMPREGADA_DIAS = {
 # Caminho da base de dados SQLite
 DB_PATH = os.getenv("DONDOCA_DB_PATH", "dondoca.db")
 
+# Caminho do ficheiro CSV com as receitas
+RECEITAS_PATH = os.getenv("DONDOCA_RECEITAS_PATH", "data/receitas.csv")
+
 # Chave da API da Anthropic, para os filtros inteligentes (validação/duplicados).
 # Obtém a tua em https://console.anthropic.com
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")

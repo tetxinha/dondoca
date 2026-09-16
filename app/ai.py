@@ -22,6 +22,12 @@ _client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 # bem para uma tarefa de classificação simples como esta.
 MODELO = "claude-haiku-4-5-20251001"
 
+# Escolher as receitas da semana envolve equilibrar várias restrições ao
+# mesmo tempo (proteína, hidratos, leguminosas, histórico) — um raciocínio
+# mais elaborado do que a simples classificação acima, por isso usamos um
+# modelo mais capaz. Corre só uma vez por semana, o custo extra é residual.
+MODELO_PLANEAMENTO = "claude-sonnet-5"
+
 
 def _parse_json_resposta(texto_resposta: str) -> dict:
     """
@@ -142,3 +148,93 @@ Responde APENAS com JSON válido, sem mais nenhum texto, exatamente neste format
             "item_duplicado": None,
             "mensagem": f"Adicionado: {texto_novo}",
         }
+
+
+def _escolha_fallback(receitas: list[dict], evitar: list[str]) -> dict:
+    """
+    Se o Claude não devolver JSON válido, escolhemos de forma simples: uma
+    receita de cada tipo de proteína (peixe, carne, vegetariano) e depois
+    completamos até 5, sempre a evitar as da semana passada. Não é tão bom a
+    equilibrar hidratos/leguminosas quanto o Claude, mas garante que o job
+    nunca fica sem resposta.
+    """
+    disponiveis = [r for r in receitas if r["Nome"] not in evitar]
+    escolhidas: list[str] = []
+    for tipo in ("peixe", "carne", "vegetariano"):
+        for receita in disponiveis:
+            if receita["Tipo_Proteina"] == tipo and receita["Nome"] not in escolhidas:
+                escolhidas.append(receita["Nome"])
+                break
+    for receita in disponiveis:
+        if len(escolhidas) >= 5:
+            break
+        if receita["Nome"] not in escolhidas:
+            escolhidas.append(receita["Nome"])
+    return {
+        "escolhidas": escolhidas[:5],
+        "justificacao": "Escolha automática (o filtro inteligente não respondeu em JSON válido).",
+    }
+
+
+def escolher_receitas_semana(
+    receitas: list[dict], evitar: list[str], historico_compras: list[str]
+) -> dict:
+    """
+    Pergunta ao Claude quais as 5 receitas a escolher para a semana.
+
+    - receitas: lista de dicionários com as colunas do CSV de receitas
+      (Nome, Tipo_Proteina, Tem_Leguminosas, Tem_Hidratos,
+      Ingredientes_Principais, Ultima_Vez, ...).
+    - evitar: nomes das receitas escolhidas na semana passada (não repetir).
+    - historico_compras: textos recentes da lista de faltas, para o Claude
+      perceber o que já se tem comprado e ajudar a variar.
+
+    Devolve um dicionário com:
+      - escolhidas (list[str]): exatamente 5 nomes de receitas (coluna "Nome")
+      - justificacao (str): frase curta a explicar o equilíbrio escolhido
+    """
+    receitas_texto = json.dumps(receitas, ensure_ascii=False, indent=2)
+    evitar_texto = "\n".join(f"- {nome}" for nome in evitar) or "(nenhuma, é a primeira semana)"
+    historico_texto = "\n".join(f"- {item}" for item in historico_compras) or "(sem histórico de compras registado)"
+
+    prompt = f"""És o planeador semanal de refeições de uma casa.
+
+Livro de receitas disponível (uma receita por objeto JSON):
+{receitas_texto}
+
+Receitas escolhidas na semana passada (NÃO repetir esta semana):
+{evitar_texto}
+
+Histórico recente da lista de compras da casa:
+{historico_texto}
+
+Escolhe exatamente 5 receitas para esta semana, respeitando:
+1. Nunca escolher nenhuma das receitas da semana passada.
+2. Equilibrar o tipo de proteína (Tipo_Proteina: peixe, carne, vegetariano) ao longo da semana — evita escolher o mesmo tipo mais de 2-3 vezes em 5.
+3. Equilibrar receitas com e sem hidratos (Tem_Hidratos) e com e sem leguminosas (Tem_Leguminosas).
+4. Preferir receitas com "Ultima_Vez" mais antiga ou vazia (não repetidas há mais tempo).
+5. Usar o histórico de compras como pista de variedade — evita escolher várias receitas seguidas com o mesmo ingrediente principal que já tem sido muito comprado recentemente.
+
+Responde APENAS com JSON válido, sem mais nenhum texto, exatamente neste formato:
+{{"escolhidas": ["Nome exato da receita 1", "Nome exato da receita 2", "Nome exato da receita 3", "Nome exato da receita 4", "Nome exato da receita 5"], "justificacao": "frase curta em português de Portugal a explicar o equilíbrio escolhido"}}
+"""
+
+    resposta = _client.messages.create(
+        model=MODELO_PLANEAMENTO,
+        max_tokens=4000,
+        thinking={"type": "adaptive"},
+        output_config={"effort": "medium"},
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    # Com "thinking" ligado, o primeiro bloco da resposta pode ser um
+    # ThinkingBlock em vez de texto — procuramos o bloco de texto em vez de
+    # assumir que é sempre o content[0].
+    bloco_texto = next((bloco for bloco in resposta.content if bloco.type == "text"), None)
+    if bloco_texto is None:
+        return _escolha_fallback(receitas, evitar)
+
+    try:
+        return _parse_json_resposta(bloco_texto.text)
+    except json.JSONDecodeError:
+        return _escolha_fallback(receitas, evitar)

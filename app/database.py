@@ -3,6 +3,7 @@ Acesso à base de dados. SQLite chega perfeitamente para este volume de dados
 (é só uma casa, não um supermercado) e não obriga a gerir um servidor extra.
 """
 
+import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -30,6 +31,16 @@ def init_db() -> None:
                 texto TEXT NOT NULL,
                 criado_em TEXT NOT NULL,
                 enviado INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS cardapio_semanal (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                receitas TEXT NOT NULL,
+                justificacao TEXT,
+                criado_em TEXT NOT NULL
             )
             """
         )
@@ -82,3 +93,22 @@ def listar_tarefas(so_por_enviar: bool = True) -> list[sqlite3.Row]:
     query += " ORDER BY criado_em"
     with get_connection() as conn:
         return conn.execute(query).fetchall()
+
+
+def guardar_cardapio_semanal(nomes_receitas: list[str], justificacao: str = "") -> int:
+    with get_connection() as conn:
+        cur = conn.execute(
+            "INSERT INTO cardapio_semanal (receitas, justificacao, criado_em) VALUES (?, ?, ?)",
+            (json.dumps(nomes_receitas, ensure_ascii=False), justificacao, datetime.now().isoformat()),
+        )
+        conn.commit()
+        return cur.lastrowid
+
+
+def ultimo_cardapio_semanal() -> list[str]:
+    """Nomes das receitas escolhidas da última vez que o job correu (lista vazia se ainda não correu nenhuma vez)."""
+    with get_connection() as conn:
+        linha = conn.execute(
+            "SELECT receitas FROM cardapio_semanal ORDER BY criado_em DESC LIMIT 1"
+        ).fetchone()
+    return json.loads(linha["receitas"]) if linha else []

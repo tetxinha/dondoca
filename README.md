@@ -63,9 +63,49 @@ Igual ao Applet 1, mas:
 > Nest Mini antes de fazeres deploy definitivo, podes usar o `ngrok`
 > (`ngrok http 8000`) que te dá um URL público temporário.
 
+## Cardápio semanal (job de domingo)
+
+O ficheiro `data/receitas.csv` é o livro de receitas da casa. Todos os
+domingos, o endpoint `POST /job/cardapio-semanal` pede ao Claude para
+escolher 5 receitas para a semana, equilibrando proteína (peixe/carne/
+vegetariano), hidratos e leguminosas, evitando repetir as da semana passada
+e olhando ao histórico da lista de faltas para variar.
+
+Como a app não tem nenhum agendador interno, este job precisa de ser
+"acionado" de fora, à semelhança dos webhooks de voz. Duas formas simples:
+
+### Opção A — Render Cron Job (se fizeres deploy no Render)
+1. No painel do Render, cria um **Cron Job** novo (ou usa `render.yaml`).
+2. Comando: um `curl` que chama o endpoint, por exemplo:
+   ```bash
+   curl -X POST "https://<o-teu-dominio>/job/cardapio-semanal" \
+     -H "x-dondoca-secret: <o-mesmo-valor-do-teu-.env>"
+   ```
+3. Agendamento: `0 8 * * 0` (todos os domingos às 8h, ajusta ao fuso horário do Render).
+
+### Opção B — Applet de "Date & Time" no IFTTT
+1. **If This**: serviço *Date & Time* → trigger **"Every day of the week at"**, escolhe Domingo.
+2. **Then That**: serviço *Webhooks* → **Make a web request**, igual aos applets de voz:
+   - URL: `.../job/cardapio-semanal`
+   - Method: `POST`
+   - Header: `x-dondoca-secret: <o-mesmo-valor-do-teu-.env>`
+
+### Testar manualmente
+O endpoint só corre normalmente ao domingo (para não disparares por engano
+noutro dia). Para testares agora mesmo, usa `?force=true`:
+
+```bash
+curl -X POST "http://localhost:8000/job/cardapio-semanal?force=true" \
+  -H "x-dondoca-secret: escolhe-uma-frase-secreta-longa"
+
+curl http://localhost:8000/cardapio-semanal
+```
+
 ## Próximos passos (fases seguintes)
 
-- Fase 2: ligar a Google Sheet de receitas e o job de domingo que escolhe as 5.
+- Fase 2: já tens o job de domingo que escolhe as 5 receitas — falta ligar
+  isto a uma fonte de receitas mais viva que o CSV (ex: Google Sheet), se
+  fizer sentido no futuro.
 - Fase 3: juntar receitas + faltas e enviar a lista consolidada por WhatsApp
   (com links de pesquisa do Continente).
 - Fase 4: job que, à segunda (para terça) e à terça (para quarta), lê as
@@ -78,9 +118,13 @@ Igual ao Applet 1, mas:
 ```
 dondoca/
 ├── app/
-│   ├── main.py        # rotas / webhooks
+│   ├── main.py        # rotas / webhooks / job do cardápio semanal
+│   ├── ai.py           # filtros e decisões inteligentes (Claude)
+│   ├── receitas.py     # leitura do CSV de receitas
 │   ├── database.py    # SQLite
 │   └── config.py       # configurações e regras da casa
+├── data/
+│   └── receitas.csv    # livro de receitas da casa
 ├── requirements.txt
 └── .env.example
 ```

@@ -7,19 +7,23 @@ e guardar em duas listas (faltas / tarefas). As funções 2, 3 e 4
 """
 
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
-from app.ai import validar_item, validar_tarefa
+from app.ai import escolher_receitas_semana, validar_item, validar_tarefa
 from app.config import WEBHOOK_SECRET
 from app.database import (
     adicionar_falta,
     adicionar_tarefa,
+    guardar_cardapio_semanal,
     init_db,
     listar_faltas,
     listar_tarefas,
+    ultimo_cardapio_semanal,
 )
+from app.receitas import receitas_como_lista
 
 
 @asynccontextmanager
@@ -94,6 +98,43 @@ def webhook_tarefa(payload: VozPayload, x_dondoca_secret: str | None = Header(de
         "texto": resultado["item_limpo"],
         "mensagem": resultado["mensagem"],
     }
+
+
+@app.post("/job/cardapio-semanal")
+def job_cardapio_semanal(force: bool = False, x_dondoca_secret: str | None = Header(default=None)):
+    """
+    Job semanal que escolhe 5 receitas, equilibrando proteína/hidratos/
+    leguminosas e evitando repetir as da semana passada. Pensado para ser
+    chamado por um cron externo (Render Cron Job, IFTTT Date & Time, etc.)
+    aos domingos — usa `?force=true` para testar manualmente noutro dia.
+    """
+    _verificar_secret(x_dondoca_secret)
+
+    if not force and datetime.now().weekday() != 6:
+        raise HTTPException(
+            status_code=409,
+            detail="Hoje não é domingo. Usa ?force=true para testar mesmo assim.",
+        )
+
+    receitas = receitas_como_lista()
+    evitar = ultimo_cardapio_semanal()
+    historico_compras = [row["texto"] for row in listar_faltas(so_por_resolver=False)][-30:]
+
+    resultado = escolher_receitas_semana(receitas, evitar, historico_compras)
+    novo_id = guardar_cardapio_semanal(resultado["escolhidas"], resultado.get("justificacao", ""))
+
+    return {
+        "ok": True,
+        "id": novo_id,
+        "escolhidas": resultado["escolhidas"],
+        "justificacao": resultado.get("justificacao", ""),
+    }
+
+
+@app.get("/cardapio-semanal")
+def get_cardapio_semanal():
+    """Só para testares o que foi escolhido na última vez que o job correu."""
+    return {"escolhidas": ultimo_cardapio_semanal()}
 
 
 @app.get("/faltas")

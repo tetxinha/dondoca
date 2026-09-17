@@ -63,44 +63,50 @@ Igual ao Applet 1, mas:
 > Nest Mini antes de fazeres deploy definitivo, podes usar o `ngrok`
 > (`ngrok http 8000`) que te dá um URL público temporário.
 
-## Cardápio semanal (job de sexta-feira às 20h)
+## Agendador (APScheduler)
 
-O ficheiro `data/receitas.csv` é o livro de receitas da casa. Todas as
-sextas-feiras às 20h, o endpoint `POST /job/cardapio-semanal` pede ao
-Claude para escolher 5 receitas para a semana, equilibrando proteína
-(peixe/carne/vegetariano), hidratos e leguminosas, evitando repetir as da
-semana passada e olhando ao histórico da lista de faltas para variar. Este
-horário dá tempo de preparar a lista do mercado antes de lá ires no sábado
-de manhã.
+A app tem um agendador interno (`app/scheduler.py`), que arranca sozinho
+com o servidor — não precisas de nenhum cron externo nem de applet do
+IFTTT para estes dois jobs. A lógica de cada job vive em `app/jobs.py`
+(reutilizada também pelos endpoints de teste manual, para não haver duas
+versões da mesma coisa):
 
-Como a app não tem nenhum agendador interno, este job precisa de ser
-"acionado" de fora, à semelhança dos webhooks de voz. Duas formas simples:
+- **Sexta-feira às 20h** — `job_cardapio_e_lista_compras()`: escolhe as 5
+  receitas da semana, monta a lista de compras e manda por WhatsApp duas
+  mensagens (🛍️ Mercado e 📦 Continente) para cada número configurado
+  (`WHATSAPP_NUMERO_RITA` / `WHATSAPP_NUMERO_MARIDO`). Este horário dá
+  tempo de ver a lista antes de ires ao mercado no sábado de manhã.
+- **Segunda e terça-feira às 20h** — `job_prioridades_empregada()`: junta
+  a obrigação fixa do dia seguinte (`EMPREGADA_DIAS` em `app/config.py`)
+  com as tarefas ainda por enviar, e manda as prioridades por WhatsApp —
+  por agora, só para a Rita (`WHATSAPP_NUMERO_RITA`), enquanto a empregada
+  ainda não tem número configurado.
 
-### Opção A — Render Cron Job (se fizeres deploy no Render)
-1. No painel do Render, cria um **Cron Job** novo (ou usa `render.yaml`).
-2. Comando: um `curl` que chama o endpoint, por exemplo:
-   ```bash
-   curl -X POST "https://<o-teu-dominio>/job/cardapio-semanal" \
-     -H "x-dondoca-secret: <o-mesmo-valor-do-teu-.env>"
-   ```
-3. Agendamento: `0 20 * * 5` (todas as sextas-feiras às 20h, ajusta ao fuso horário do Render).
+Se um envio falhar (ex: fora da janela de 24h, enquanto os templates da
+Meta não são aprovados), o job não rebenta nem perde as tarefas por
+enviar — só volta a tentar da próxima vez.
 
-### Opção B — Applet de "Date & Time" no IFTTT
-1. **If This**: serviço *Date & Time* → trigger **"Every day of the week at"**, escolhe Sexta-feira às 20:00.
-2. **Then That**: serviço *Webhooks* → **Make a web request**, igual aos applets de voz:
-   - URL: `.../job/cardapio-semanal`
-   - Method: `POST`
-   - Header: `x-dondoca-secret: <o-mesmo-valor-do-teu-.env>`
+> ⚠️ **Corre sempre com um único worker.** Com mais do que um
+> (`uvicorn app.main:app --workers 2`, ou várias instâncias em produção),
+> cada worker teria o seu próprio agendador e os jobs corriam em
+> duplicado — cardápios a dobrar e mensagens de WhatsApp repetidas.
 
 ### Testar manualmente
-O endpoint só corre normalmente à sexta-feira (para não disparares por
-engano noutro dia). Para testares agora mesmo, usa `?force=true`:
+Os jobs também têm endpoints para testares sem esperar pelo dia certo:
 
 ```bash
+# escolher as receitas da semana (não manda WhatsApp)
 curl -X POST "http://localhost:8000/job/cardapio-semanal?force=true" \
   -H "x-dondoca-secret: escolhe-uma-frase-secreta-longa"
 
 curl http://localhost:8000/cardapio-semanal
+```
+
+Para testares o envio por WhatsApp em si (`job_cardapio_e_lista_compras`
+ou `job_prioridades_empregada`), chama-os diretamente em Python:
+
+```bash
+python3 -c "from app.jobs import job_cardapio_e_lista_compras as j; j()"
 ```
 
 ## Lista de compras semanal
@@ -122,9 +128,6 @@ curl http://localhost:8000/lista-compras-semanal
 
 Não precisa de secret (é só leitura, como `/faltas` ou `/cardapio-semanal`),
 mas dá erro `404` se ainda não tiver corrido nenhum `/job/cardapio-semanal`.
-Não tem agendamento próprio — corre-o quando precisares (ex: no sábado de
-manhã antes de saíres de casa), depois do job de sexta-feira já ter gerado
-o cardápio.
 
 ## Enviar por WhatsApp (WhatsApp Cloud API da Meta)
 
@@ -166,28 +169,31 @@ Passos manuais na [Meta for Developers](https://developers.facebook.com)
 - `enviar_lista_mercado(numero, itens)`, `enviar_lista_continente(numero,
   itens)` e `enviar_lista_tarefas(numero, itens)` usam esses templates.
   **Não funcionam enquanto a Meta não aprovar os templates** — até lá, a
-  chamada à API é recusada mesmo com o nome certo configurado.
+  chamada à API é recusada mesmo com o nome certo configurado. Por agora,
+  os jobs do agendador usam texto livre (`enviar_mensagem`) em vez destas
+  três — assim que os templates forem aprovados, `app/jobs.py` passa a
+  usá-las (deixam de depender da janela de 24h).
 
 ## Próximos passos (fases seguintes)
 
 - Fase 2: já tens o job de sexta-feira que escolhe as 5 receitas — falta ligar
   isto a uma fonte de receitas mais viva que o CSV (ex: Google Sheet), se
   fizer sentido no futuro.
-- Fase 3: já tens receitas + faltas juntas numa lista de compras consolidada
-  (`/lista-compras-semanal`) e o envio por WhatsApp pronto
-  (`app/whatsapp.py`) — falta a Meta aprovar os templates e ligar tudo a
-  um endpoint/job que envie automaticamente.
-- Fase 4: job que, à segunda (para terça) e à terça (para quarta), lê as
-  tarefas da semana e envia o WhatsApp com as prioridades por dia (já tens
-  `enviar_lista_tarefas()` pronta e `EMPREGADA_DIAS` em `app/config.py`).
-- Deploy: Railway, Render ou Fly.io — basta ligar o repositório GitHub.
+- Fase 3 e Fase 4: **feitas** — o agendador (`app/scheduler.py` +
+  `app/jobs.py`) já envia a lista de compras à sexta-feira e as
+  prioridades da empregada à segunda/terça. Falta só a Meta aprovar os
+  templates para trocar `enviar_mensagem` pelas funções de template.
+- Deploy: Railway, Render ou Fly.io — basta ligar o repositório GitHub
+  (lembra-te: um único worker, ver secção do Agendador acima).
 
 ## Estrutura
 
 ```
 dondoca/
 ├── app/
-│   ├── main.py        # rotas / webhooks / job do cardápio semanal
+│   ├── main.py        # rotas / webhooks / lifespan (arranca o agendador)
+│   ├── scheduler.py    # agendamento dos jobs semanais (APScheduler)
+│   ├── jobs.py          # lógica dos jobs (receitas, lista de compras, prioridades)
 │   ├── ai.py           # filtros e decisões inteligentes (Claude)
 │   ├── receitas.py     # leitura do CSV de receitas
 │   ├── whatsapp.py     # envio de mensagens (WhatsApp Cloud API)

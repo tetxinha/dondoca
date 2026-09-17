@@ -5,3 +5,4 @@ python-dotenv>=1.0
 anthropic>=0.39
 pandas>=2.2
 requests>=2.32
+apscheduler>=3.10,<4

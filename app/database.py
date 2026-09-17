@@ -105,6 +105,16 @@ def listar_tarefas(so_por_enviar: bool = True) -> list[sqlite3.Row]:
         return conn.execute(query).fetchall()
 
 
+def marcar_tarefas_enviadas(ids: list[int]) -> None:
+    """Marca as tarefas dadas como já enviadas, para não repetirmos as mesmas no próximo envio."""
+    if not ids:
+        return
+    marcadores = ",".join("?" * len(ids))
+    with get_connection() as conn:
+        conn.execute(f"UPDATE tarefas SET enviado = 1 WHERE id IN ({marcadores})", ids)
+        conn.commit()
+
+
 def guardar_cardapio_semanal(nomes_receitas: list[str], justificacao: str = "") -> int:
     with get_connection() as conn:
         cur = conn.execute(

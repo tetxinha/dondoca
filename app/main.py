@@ -12,12 +12,11 @@ from datetime import datetime
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
-from app.ai import escolher_receitas_semana, gerar_lista_compras_semanal, validar_item, validar_tarefa
+from app.ai import validar_item, validar_tarefa
 from app.config import WEBHOOK_SECRET
 from app.database import (
     adicionar_falta,
     adicionar_tarefa,
-    guardar_cardapio_semanal,
     init_db,
     listar_compras_historico,
     listar_faltas,
@@ -25,13 +24,16 @@ from app.database import (
     marcar_compra,
     ultimo_cardapio_semanal,
 )
-from app.receitas import receitas_como_lista, receitas_por_nome
+from app.jobs import escolher_e_guardar_receitas_semana, montar_lista_compras_semanal
+from app.scheduler import iniciar_agendador
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    agendador = iniciar_agendador()
     yield
+    agendador.shutdown()
 
 
 app = FastAPI(title="dondoca", lifespan=lifespan)
@@ -121,11 +123,10 @@ def webhook_tarefa(payload: VozPayload, x_dondoca_secret: str | None = Header(de
 @app.post("/job/cardapio-semanal")
 def job_cardapio_semanal(force: bool = False, x_dondoca_secret: str | None = Header(default=None)):
     """
-    Job semanal que escolhe 5 receitas, equilibrando proteína/hidratos/
-    leguminosas e evitando repetir as da semana passada. Pensado para ser
-    chamado por um cron externo (Render Cron Job, IFTTT Date & Time, etc.)
-    às sextas-feiras às 20h — dá tempo de preparar a lista antes de ir ao
-    mercado no sábado. Usa `?force=true` para testar manualmente noutro dia.
+    Escolhe 5 receitas, equilibrando proteína/hidratos/leguminosas e
+    evitando repetir as da semana passada. Corre automaticamente às
+    sextas-feiras às 20h (ver app/scheduler.py) — este endpoint serve para
+    testares manualmente. Usa `?force=true` para testar noutro dia.
     """
     _verificar_secret(x_dondoca_secret)
 
@@ -135,16 +136,11 @@ def job_cardapio_semanal(force: bool = False, x_dondoca_secret: str | None = Hea
             detail="Hoje não é sexta-feira. Usa ?force=true para testar mesmo assim.",
         )
 
-    receitas = receitas_como_lista()
-    evitar = ultimo_cardapio_semanal()
-    historico_compras = [row["texto"] for row in listar_faltas(so_por_resolver=False)][-30:]
-
-    resultado = escolher_receitas_semana(receitas, evitar, historico_compras)
-    novo_id = guardar_cardapio_semanal(resultado["escolhidas"], resultado.get("justificacao", ""))
+    resultado = escolher_e_guardar_receitas_semana()
 
     return {
         "ok": True,
-        "id": novo_id,
+        "id": resultado["id"],
         "escolhidas": resultado["escolhidas"],
         "justificacao": resultado.get("justificacao", ""),
     }
@@ -171,10 +167,7 @@ def get_lista_compras_semanal():
             detail="Ainda não há nenhum cardápio semanal gerado. Corre primeiro /job/cardapio-semanal.",
         )
 
-    receitas_semana = receitas_por_nome(nomes_receitas)
-    itens_faltas = [row["texto"] for row in listar_faltas()]
-
-    resultado = gerar_lista_compras_semanal(receitas_semana, itens_faltas)
+    resultado = montar_lista_compras_semanal(nomes_receitas)
 
     return {
         "mercado": {

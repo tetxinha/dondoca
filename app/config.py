@@ -34,3 +34,26 @@ RECEITAS_PATH = os.getenv("DONDOCA_RECEITAS_PATH", "data/receitas.csv")
 # Chave da API da Anthropic, para os filtros inteligentes (validação/duplicados).
 # Obtém a tua em https://console.anthropic.com
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+
+# WhatsApp Cloud API (Meta) — para enviar mensagens (lista de compras,
+# tarefas, etc.). Ver README para os passos de configuração na Meta for
+# Developers (conta, número de testes, token de acesso).
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN", "")
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
+
+# Números autorizados a receber mensagens (aprovados na Meta enquanto a
+# app está em modo de testes). A empregada ainda não está cá — usa-se o
+# WHATSAPP_NUMERO_RITA para testar antes de a adicionar.
+WHATSAPP_NUMERO_RITA = os.getenv("WHATSAPP_NUMERO_RITA", "")
+WHATSAPP_NUMERO_MARIDO = os.getenv("WHATSAPP_NUMERO_MARIDO", "")
+
+# Nomes dos templates (em revisão na Meta), um por lista. Todos têm o
+# mesmo formato: uma única variável {{1}} no corpo, com os itens em
+# bullet points, um por parágrafo.
+WHATSAPP_TEMPLATE_LISTA_MERCADO = os.getenv("WHATSAPP_TEMPLATE_LISTA_MERCADO", "")
+WHATSAPP_TEMPLATE_LISTA_CONTINENTE = os.getenv("WHATSAPP_TEMPLATE_LISTA_CONTINENTE", "")
+WHATSAPP_TEMPLATE_LISTA_TAREFAS = os.getenv("WHATSAPP_TEMPLATE_LISTA_TAREFAS", "")
+
+# Código de idioma dos templates (o mesmo para todos), tal como escolhido
+# ao criá-los na Meta.
+WHATSAPP_TEMPLATE_LINGUA = os.getenv("WHATSAPP_TEMPLATE_LINGUA", "pt_PT")

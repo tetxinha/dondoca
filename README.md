@@ -103,13 +103,37 @@ curl -X POST "http://localhost:8000/job/cardapio-semanal?force=true" \
 curl http://localhost:8000/cardapio-semanal
 ```
 
+## Lista de compras semanal
+
+Depois de o job de sexta-feira escolher as receitas, `GET
+/lista-compras-semanal` junta os ingredientes principais dessas 5 receitas
+com os itens ainda por resolver na lista de faltas, remove duplicados e
+variações do mesmo item (ex: "tomate" e "tomates" contam como um só) e
+separa tudo em duas listas — cada uma já com um campo `texto` pronto a
+colar numa conversa de WhatsApp:
+
+- **`mercado`**: produtos frescos — legumes, fruta, carne, peixe, arroz.
+- **`continente`**: tudo o resto — limpeza, higiene, mercearia não
+  perecível, iogurtes, leite, massas, condimentos, cereais/aveia.
+
+```bash
+curl http://localhost:8000/lista-compras-semanal
+```
+
+Não precisa de secret (é só leitura, como `/faltas` ou `/cardapio-semanal`),
+mas dá erro `404` se ainda não tiver corrido nenhum `/job/cardapio-semanal`.
+Não tem agendamento próprio — corre-o quando precisares (ex: no sábado de
+manhã antes de saíres de casa), depois do job de sexta-feira já ter gerado
+o cardápio.
+
 ## Próximos passos (fases seguintes)
 
 - Fase 2: já tens o job de sexta-feira que escolhe as 5 receitas — falta ligar
   isto a uma fonte de receitas mais viva que o CSV (ex: Google Sheet), se
   fizer sentido no futuro.
-- Fase 3: juntar receitas + faltas e enviar a lista consolidada por WhatsApp
-  (com links de pesquisa do Continente).
+- Fase 3: já tens receitas + faltas juntas numa lista de compras consolidada
+  (`/lista-compras-semanal`) — falta o envio automático por WhatsApp (com
+  links de pesquisa do Continente).
 - Fase 4: job que, à segunda (para terça) e à terça (para quarta), lê as
   tarefas da semana e envia o WhatsApp com as prioridades por dia
   (ver `EMPREGADA_DIAS` em `app/config.py` — já está preparado para isso).

@@ -150,6 +150,78 @@ Responde APENAS com JSON válido, sem mais nenhum texto, exatamente neste format
         }
 
 
+def _fallback_lista_compras(receitas: list[dict], itens_faltas: list[str]) -> dict:
+    """
+    Se o Claude não devolver JSON válido, não arriscamos classificar
+    itens sozinhos (a fronteira mercado/continente não é óbvia por regras
+    simples) — juntamos tudo, sem separar por vírgulas nem deduplicar
+    variações, e devolvemos como "continente" para nunca perderes um item.
+    """
+    ingredientes = [
+        ingrediente.strip()
+        for receita in receitas
+        for ingrediente in receita.get("Ingredientes_Principais", "").split(",")
+        if ingrediente.strip()
+    ]
+    todos_itens = list(dict.fromkeys(ingredientes + itens_faltas))
+    return {"mercado": [], "continente": todos_itens}
+
+
+def gerar_lista_compras_semanal(receitas: list[dict], itens_faltas: list[str]) -> dict:
+    """
+    Junta os ingredientes das receitas escolhidas para a semana com os
+    itens ainda por resolver na lista de faltas, remove duplicados e
+    variações do mesmo item (ex: "tomate" e "tomates") e classifica cada
+    item resultante em "mercado" (fresco) ou "continente" (tudo o resto).
+
+    Devolve um dicionário com:
+      - mercado (list[str]): itens frescos — legumes, fruta, carne, peixe, arroz
+      - continente (list[str]): tudo o resto — limpeza, higiene, mercearia
+        não perecível, iogurtes, leite, massas, condimentos, cereais/aveia
+    """
+    receitas_texto = "\n".join(
+        f"- {receita['Nome']}: {receita['Ingredientes_Principais']}" for receita in receitas
+    ) or "(nenhuma receita esta semana)"
+    faltas_texto = "\n".join(f"- {item}" for item in itens_faltas) or "(lista de faltas vazia)"
+
+    prompt = f"""És responsável por preparar a lista de compras semanal de uma casa.
+
+Receitas escolhidas para esta semana (nome: ingredientes principais):
+{receitas_texto}
+
+Itens ainda por resolver na lista de faltas:
+{faltas_texto}
+
+Tarefa:
+1. Extrai os itens concretos a comprar a partir dos ingredientes das receitas (ignora quantidades, instruções de confeção e sub-receitas entre parênteses — foca-te só no ingrediente em si).
+2. Junta esses itens com os da lista de faltas.
+3. Remove duplicados e variações do mesmo item (ex: "tomate" e "tomates" contam como um só; junta pela versão mais natural em português de Portugal, no singular).
+4. Classifica cada item resultante em exatamente uma destas duas categorias:
+   - "mercado": produtos frescos — legumes, fruta, carne, peixe, arroz.
+   - "continente": tudo o resto — produtos de limpeza, higiene, mercearia não perecível, iogurtes, leite, massas, condimentos, cereais/aveia.
+
+Responde APENAS com JSON válido, sem mais nenhum texto, exatamente neste formato:
+{{"mercado": ["item1", "item2", "..."], "continente": ["item1", "item2", "..."]}}
+"""
+
+    resposta = _client.messages.create(
+        model=MODELO_PLANEAMENTO,
+        max_tokens=4000,
+        thinking={"type": "adaptive"},
+        output_config={"effort": "medium"},
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    bloco_texto = next((bloco for bloco in resposta.content if bloco.type == "text"), None)
+    if bloco_texto is None:
+        return _fallback_lista_compras(receitas, itens_faltas)
+
+    try:
+        return _parse_json_resposta(bloco_texto.text)
+    except json.JSONDecodeError:
+        return _fallback_lista_compras(receitas, itens_faltas)
+
+
 def _escolha_fallback(receitas: list[dict], evitar: list[str]) -> dict:
     """
     Se o Claude não devolver JSON válido, escolhemos de forma simples: uma

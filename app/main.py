@@ -12,7 +12,7 @@ from datetime import datetime
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
-from app.ai import escolher_receitas_semana, validar_item, validar_tarefa
+from app.ai import escolher_receitas_semana, gerar_lista_compras_semanal, validar_item, validar_tarefa
 from app.config import WEBHOOK_SECRET
 from app.database import (
     adicionar_falta,
@@ -25,7 +25,7 @@ from app.database import (
     marcar_compra,
     ultimo_cardapio_semanal,
 )
-from app.receitas import receitas_como_lista
+from app.receitas import receitas_como_lista, receitas_por_nome
 
 
 @asynccontextmanager
@@ -59,6 +59,13 @@ class ComprasPayload(BaseModel):
 def _verificar_secret(secret: str | None) -> None:
     if secret != WEBHOOK_SECRET:
         raise HTTPException(status_code=401, detail="Secret inválido")
+
+
+def _texto_whatsapp(titulo: str, itens: list[str]) -> str:
+    if not itens:
+        return f"{titulo}: nada a comprar esta semana."
+    linhas = "\n".join(f"- {item}" for item in itens)
+    return f"{titulo}:\n{linhas}"
 
 
 @app.post("/webhook/falta")
@@ -147,6 +154,38 @@ def job_cardapio_semanal(force: bool = False, x_dondoca_secret: str | None = Hea
 def get_cardapio_semanal():
     """Só para testares o que foi escolhido na última vez que o job correu."""
     return {"escolhidas": ultimo_cardapio_semanal()}
+
+
+@app.get("/lista-compras-semanal")
+def get_lista_compras_semanal():
+    """
+    Junta os ingredientes das 5 receitas escolhidas esta semana com os
+    itens ainda por resolver na lista de faltas, remove duplicados e separa
+    tudo em duas listas prontas a enviar por WhatsApp: mercado (fresco) e
+    Continente (tudo o resto).
+    """
+    nomes_receitas = ultimo_cardapio_semanal()
+    if not nomes_receitas:
+        raise HTTPException(
+            status_code=404,
+            detail="Ainda não há nenhum cardápio semanal gerado. Corre primeiro /job/cardapio-semanal.",
+        )
+
+    receitas_semana = receitas_por_nome(nomes_receitas)
+    itens_faltas = [row["texto"] for row in listar_faltas()]
+
+    resultado = gerar_lista_compras_semanal(receitas_semana, itens_faltas)
+
+    return {
+        "mercado": {
+            "itens": resultado["mercado"],
+            "texto": _texto_whatsapp("Mercado", resultado["mercado"]),
+        },
+        "continente": {
+            "itens": resultado["continente"],
+            "texto": _texto_whatsapp("Continente", resultado["continente"]),
+        },
+    }
 
 
 @app.post("/compras/marcar")

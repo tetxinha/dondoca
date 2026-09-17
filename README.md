@@ -126,17 +126,60 @@ Não tem agendamento próprio — corre-o quando precisares (ex: no sábado de
 manhã antes de saíres de casa), depois do job de sexta-feira já ter gerado
 o cardápio.
 
+## Enviar por WhatsApp (WhatsApp Cloud API da Meta)
+
+`app/whatsapp.py` envia mensagens usando a WhatsApp Cloud API da Meta.
+Passos manuais na [Meta for Developers](https://developers.facebook.com)
+(não há como automatizar isto — é tudo feito na conta da Meta):
+
+1. Cria uma conta de developer e uma App do tipo **Business**.
+2. Na App, adiciona o produto **WhatsApp**. A Meta atribui logo um número
+   de testes grátis.
+3. Na página **"API Setup"** da App encontras o `Temporary access token`
+   (24h) e o `Phone number ID` — copia-os para `WHATSAPP_TOKEN` e
+   `WHATSAPP_PHONE_NUMBER_ID` no teu `.env`. Para um token que não expire,
+   cria um **System User** em Business Settings → Users → System Users,
+   com a permissão `whatsapp_business_messaging`.
+4. Enquanto a app está em modo de testes, só consegues enviar para números
+   que adicionares e verificares (por SMS) na secção "API Setup" → "To".
+   Guarda esses números em `WHATSAPP_NUMERO_RITA` / `WHATSAPP_NUMERO_MARIDO`
+   no `.env` (formato internacional, só dígitos: ex. `351912345678`).
+
+### Texto livre vs. templates
+- `enviar_mensagem(numero, texto)` manda texto livre, mas só é entregue se
+  o destinatário te tiver escrito nas últimas 24h (a "janela de
+  atendimento" da Meta). Serve para testar rapidamente:
+  ```bash
+  python3 -c "
+  from app.config import WHATSAPP_NUMERO_RITA
+  from app.whatsapp import enviar_mensagem
+  print(enviar_mensagem(WHATSAPP_NUMERO_RITA, 'teste'))
+  "
+  ```
+- Fora dessa janela (ex: enviar a lista sem a pessoa ter escrito primeiro),
+  a Meta só entrega mensagens de **template pré-aprovado**. Temos três
+  templates em revisão na Meta — `lista_mercado`, `lista_continente` e
+  `lista_tarefas` — todos com uma única variável `{{1}}` no corpo, onde
+  entra a lista em bullet points (um item por parágrafo). Os nomes vão
+  para `WHATSAPP_TEMPLATE_LISTA_MERCADO` / `_CONTINENTE` / `_TAREFAS` no
+  `.env`, e `WHATSAPP_TEMPLATE_LINGUA` (o mesmo para os três).
+- `enviar_lista_mercado(numero, itens)`, `enviar_lista_continente(numero,
+  itens)` e `enviar_lista_tarefas(numero, itens)` usam esses templates.
+  **Não funcionam enquanto a Meta não aprovar os templates** — até lá, a
+  chamada à API é recusada mesmo com o nome certo configurado.
+
 ## Próximos passos (fases seguintes)
 
 - Fase 2: já tens o job de sexta-feira que escolhe as 5 receitas — falta ligar
   isto a uma fonte de receitas mais viva que o CSV (ex: Google Sheet), se
   fizer sentido no futuro.
 - Fase 3: já tens receitas + faltas juntas numa lista de compras consolidada
-  (`/lista-compras-semanal`) — falta o envio automático por WhatsApp (com
-  links de pesquisa do Continente).
+  (`/lista-compras-semanal`) e o envio por WhatsApp pronto
+  (`app/whatsapp.py`) — falta a Meta aprovar os templates e ligar tudo a
+  um endpoint/job que envie automaticamente.
 - Fase 4: job que, à segunda (para terça) e à terça (para quarta), lê as
-  tarefas da semana e envia o WhatsApp com as prioridades por dia
-  (ver `EMPREGADA_DIAS` em `app/config.py` — já está preparado para isso).
+  tarefas da semana e envia o WhatsApp com as prioridades por dia (já tens
+  `enviar_lista_tarefas()` pronta e `EMPREGADA_DIAS` em `app/config.py`).
 - Deploy: Railway, Render ou Fly.io — basta ligar o repositório GitHub.
 
 ## Estrutura
@@ -147,6 +190,7 @@ dondoca/
 │   ├── main.py        # rotas / webhooks / job do cardápio semanal
 │   ├── ai.py           # filtros e decisões inteligentes (Claude)
 │   ├── receitas.py     # leitura do CSV de receitas
+│   ├── whatsapp.py     # envio de mensagens (WhatsApp Cloud API)
 │   ├── database.py    # SQLite
 │   └── config.py       # configurações e regras da casa
 ├── data/

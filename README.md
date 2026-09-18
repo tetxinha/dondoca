@@ -34,42 +34,47 @@ curl http://localhost:8000/faltas
 
 Se vires `ovos` na lista, está a funcionar.
 
-## Configurar o IFTTT (a parte da voz)
+## Configurar o Atalho da Siri (a parte da voz)
 
-Precisas de 2 applets (o plano gratuito do IFTTT permite isto):
+**Nota:** chegámos a tentar isto com IFTTT + Google Assistant, mas
+desistimos — a Google só permite escrever no Google Keep por essa via, e a
+API do Keep é má. A solução atual é um Atalho (Shortcut) no iPhone, que
+fala diretamente com a Siri.
 
-### Applet 1 — Faltas
-1. **If This**: serviço *Google Assistant* → escolhe o trigger **"Say a
-   phrase with a text ingredient"**.
-2. Configura as frases, por exemplo:
-   - `Adiciona $ à falta`
-   - `Falta $`
-   - (o `$` é o texto que dizes, ex: "leite")
-3. **Then That**: serviço *Webhooks* → **Make a web request**.
+Precisas de 2 Atalhos (app **Atalhos** do iPhone):
+
+### Atalho 1 — Faltas
+1. Cria um Atalho novo chamado, por exemplo, "Falta".
+2. Ação **"Perguntar"** (Ask for Input), tipo Texto, com a pergunta
+   `O que falta?`.
+3. Ação **"Obter Conteúdo de URL"** (Get Contents of URL):
    - URL: `https://<o-teu-dominio-quando-fizeres-deploy>/webhook/falta`
-   - Method: `POST`
-   - Content Type: `application/json`
-   - Body: `{"texto": "{{TextField}}"}`
-   - Em "Advanced options" consegues adicionar um **header** customizado:
+   - Método: `POST`
+   - Cabeçalhos: `Content-Type: application/json` e
      `x-dondoca-secret: <o-mesmo-valor-do-teu-.env>`
+   - Corpo do pedido: JSON, campo `texto` a apontar para a resposta da
+     pergunta anterior (ex: `{"texto": [Resposta Fornecida]}`).
+4. Nos detalhes do Atalho, ativa **"Adicionar à Siri"** e grava a frase
+   `Ei Siri, Falta`.
 
-### Applet 2 — Tarefas
-Igual ao Applet 1, mas:
-- Frases tipo `Adiciona $ às tarefas` / `Tarefa $`
+### Atalho 2 — Tarefas
+Igual ao Atalho 1, mas:
+- Pergunta: `Que tarefas?`
 - URL: `.../webhook/tarefa`
+- Frase da Siri: `Ei Siri, Tarefa`
 
-> Nota: enquanto testas localmente, o IFTTT não consegue chegar ao teu
-> `localhost` (é preciso um URL público). Para testar já com o Google
-> Nest Mini antes de fazeres deploy definitivo, podes usar o `ngrok`
-> (`ngrok http 8000`) que te dá um URL público temporário.
+> Nota: enquanto testas localmente, a Siri não consegue chegar ao teu
+> `localhost` (é preciso um URL público). Antes de fazeres deploy
+> definitivo, podes usar o `ngrok` (`ngrok http 8000`) para teres um URL
+> público temporário.
 
 ## Agendador (APScheduler)
 
 A app tem um agendador interno (`app/scheduler.py`), que arranca sozinho
-com o servidor — não precisas de nenhum cron externo nem de applet do
-IFTTT para estes dois jobs. A lógica de cada job vive em `app/jobs.py`
-(reutilizada também pelos endpoints de teste manual, para não haver duas
-versões da mesma coisa):
+com o servidor — não precisas de nenhum cron externo para estes dois
+jobs. A lógica de cada job vive em `app/jobs.py` (reutilizada também
+pelos endpoints de teste manual, para não haver duas versões da mesma
+coisa):
 
 - **Sexta-feira às 20h** — `job_cardapio_e_lista_compras()`: escolhe as 5
   receitas da semana, monta a lista de compras e manda por WhatsApp duas

@@ -14,8 +14,9 @@ from dotenv import load_dotenv
 # já não precisas de o correr, o Python trata disto sozinho.
 load_dotenv()
 
-# Chave secreta que colocamos na URL do webhook (?secret=...) para que
-# só o IFTTT (que a conhece) consiga escrever nas listas.
+# Chave secreta que colocamos no header x-dondoca-secret de cada pedido,
+# para que só quem a conhecer (os teus Atalhos da Siri) consiga escrever
+# nas listas.
 WEBHOOK_SECRET = os.getenv("DONDOCA_WEBHOOK_SECRET", "muda-me")
 
 # Dias em que a empregada vem e o que faz em cada um.

@@ -113,7 +113,7 @@ def validar_tarefa(texto_novo: str, itens_existentes: list[str]) -> dict:
     """
     lista_texto = "\n".join(f"- {item}" for item in itens_existentes) or "(lista vazia)"
 
-    prompt = f"""És o filtro de qualidade de uma lista de tarefas domésticas, ditas por voz através do Google Assistant.
+    prompt = f"""És o filtro de qualidade de uma lista de tarefas domésticas, ditas por voz através da Siri.
 
 Lista atual de tarefas já pendentes:
 {lista_texto}
